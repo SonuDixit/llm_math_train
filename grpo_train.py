@@ -21,16 +21,18 @@ def format_reward_func(completions, **kwargs):
     matches = [re.match(pattern, content) for content in completion_contents]
     return [1.0 if match else 0.0 for match in matches]
 
-
+exp_id:int = 2
+exp_name:str = 'exp'
 
 train_ds, test_ds = get_dataset()
 print(f'datasets training:{train_ds}, validation:{test_ds}')
 training_args = GRPOConfig(output_dir="Qwen2-0.5B-GRPO", 
-                           logging_steps=10,
+                           logging_steps=4,
                            per_device_train_batch_size=1,
-                           gradient_accumulation_steps=8,
-                           num_generations=8,               # G in GRPO
-                           run_name='exp_1'                 # wandb logging
+                           gradient_accumulation_steps=32,
+                           num_generations=16,               # G in GRPO
+                           learning_rate=1e-5,
+                           run_name=f'{exp_id}_{exp_name}'                 # wandb logging
                            )
 trainer = GRPOTrainer(
     model="Qwen/Qwen2-0.5B-Instruct",
