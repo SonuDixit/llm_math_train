@@ -5,11 +5,13 @@ from data_process import get_dataset
 from reward_score import compute_score
 
 
-
-def accuracy_reward_func(prompts, completions, ground_truths, **kwargs):
+def accuracy_reward_func(prompts, completions, **kwargs):
     """Reward function that checks if the completion is correct."""
     solutions = [completion[0]["content"] for completion in completions]
-    scores = [compute_score(solution_str=solution, ground_truth=ground_truth) for solution, ground_truth in zip(solutions, ground_truths)]
+    ground_truths = kwargs.get('ground_truth')
+    # print(ground_truths)
+    scores = [compute_score(solution_str=solution, 
+                            ground_truth=ground_truth) for solution, ground_truth in zip(solutions, ground_truths)]
     return scores
 
 def format_reward_func(completions, **kwargs):
@@ -22,8 +24,14 @@ def format_reward_func(completions, **kwargs):
 
 
 train_ds, test_ds = get_dataset()
-
-training_args = GRPOConfig(output_dir="Qwen2-0.5B-GRPO", logging_steps=1)
+print(f'datasets training:{train_ds}, validation:{test_ds}')
+training_args = GRPOConfig(output_dir="Qwen2-0.5B-GRPO", 
+                           logging_steps=10,
+                           per_device_train_batch_size=1,
+                           gradient_accumulation_steps=8,
+                           num_generations=8,               # G in GRPO
+                           run_name='exp_1'                 # wandb logging
+                           )
 trainer = GRPOTrainer(
     model="Qwen/Qwen2-0.5B-Instruct",
     reward_funcs=[format_reward_func, accuracy_reward_func],

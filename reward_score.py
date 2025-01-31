@@ -76,7 +76,7 @@ def compute_score(solution_str,
     
     equation = extract_solution(solution_str=solution_str)
     do_print = random.randint(1, 64) == 1
-    do_print = True
+    # do_print = True
     
     if do_print:
         print(f"--------------------------------")
