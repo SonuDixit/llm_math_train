@@ -10,7 +10,7 @@ from tqdm import tqdm
 import argparse
 
 
-def get_dataset():
+def get_dataset(train_size: int = 327680, test_size: int = 1024) -> Tuple[Dataset, Dataset]:
     # checking the online version
     raw_dataset = load_dataset('Jiayi-Pan/Countdown-Tasks-3to4', split='train')
     print(raw_dataset[0])
@@ -49,8 +49,8 @@ def get_dataset():
     # args = parser.parse_args()
 
     data_source = 'countdown'
-    TRAIN_SIZE = 327680
-    TEST_SIZE = 1024
+    TRAIN_SIZE = train_size
+    TEST_SIZE = test_size
 
     raw_dataset = load_dataset('Jiayi-Pan/Countdown-Tasks-3to4', split='train')
 
