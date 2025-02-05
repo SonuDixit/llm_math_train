@@ -10,6 +10,8 @@ def accuracy_reward_func(prompts, completions, **kwargs):
     solutions = [completion[0]["content"] for completion in completions]
     ground_truths = kwargs.get('ground_truth')
     # print(ground_truths)
+    print('accuracy reward')
+    print(solutions, ground_truths)
     scores = [compute_score(solution_str=solution, 
                             ground_truth=ground_truth) for solution, ground_truth in zip(solutions, ground_truths)]
     return scores
@@ -18,21 +20,24 @@ def format_reward_func(completions, **kwargs):
     """Reward function that checks if the completion has a specific format."""
     pattern = r"^<think>.*?</think><answer>.*?</answer>$"
     completion_contents = [completion[0]["content"] for completion in completions]
+    print('format reward')
+    print(completion_contents)
     matches = [re.match(pattern, content) for content in completion_contents]
     return [1.0 if match else 0.0 for match in matches]
 
 exp_id:int = 4
 exp_name:str = 'exp'
-model_name:str = "Qwen/Qwen2-1.5B-Instruct"
+model_name:str = "Qwen/Qwen2-0.5B"
 
 train_ds, test_ds = get_dataset()
 print(f'datasets training:{train_ds}, validation:{test_ds}')
-training_args = GRPOConfig(output_dir="Qwen2-1.5B-GRPO", 
+training_args = GRPOConfig(output_dir="Qwen2-0.5B-GRPO", 
                            logging_steps=1,
                            per_device_train_batch_size=1,
-                           gradient_accumulation_steps=32,
-                           num_generations=16,               # G in GRPO
+                           gradient_accumulation_steps=1,
+                           num_generations=4,               # G in GRPO paper
                            learning_rate=1e-5,
+                           max_completion_length=32,        # |o_i| in GRPO paper
                            run_name=f'{exp_id}_{exp_name}'                 # wandb logging
                            )
 trainer = GRPOTrainer(
