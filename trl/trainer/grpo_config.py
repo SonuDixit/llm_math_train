@@ -233,3 +233,10 @@ class GRPOConfig(TrainingArguments):
             "synchronized with the reference policy. To use this parameter, you must set `sync_ref_model=True`."
         },
     )
+    num_exploration_steps: int = field(
+        default=1,
+        metadata={
+            "help": "number of exploration steps done before syncing old and new policy."
+            "old policy gets updated after these training steps. "
+        },
+    )
