@@ -45,6 +45,7 @@ from ..data_utils import apply_chat_template, is_conversational, maybe_apply_cha
 from ..import_utils import is_vllm_available
 from ..models import create_reference_model, prepare_deepspeed, unwrap_model_for_generation
 from .callbacks import SyncRefModelCallback
+from .callbacks import SyncOldPolicyCallback
 from .grpo_config import GRPOConfig
 from .utils import generate_model_card, get_comet_experiment_url, pad
 
@@ -61,6 +62,14 @@ if is_wandb_available():
 # What we call a reward function is a callable that takes a list of prompts and completions and returns a list of
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
+
+def weight_copy(curr_policy, old_policy):
+    '''
+    set old_policy params to curr_policy
+    '''
+    for param1, param2 in zip(curr_policy.parameters(), old_policy.parameters()):
+        param2.data = param1.data
+
 
 
 class GRPOTrainer(Trainer):
@@ -203,13 +212,16 @@ class GRPOTrainer(Trainer):
         # Reference model
         if is_deepspeed_zero3_enabled():
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
+            self.old_policy = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
         elif peft_config is None:
             # If PEFT configuration is not provided, create a reference model based on the initial model.
             self.ref_model = create_reference_model(model)
+            self.old_policy = create_reference_model(model)
         else:
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
             # to revert to the initial model.
             self.ref_model = None
+            self.old_policy = create_reference_model(model)
 
         # Processing class
         if processing_class is None:
@@ -257,6 +269,13 @@ class GRPOTrainer(Trainer):
         self.use_vllm = args.use_vllm
 
         self.beta = args.beta
+
+        #### - edits for grpo internal update
+        # self.num_grpo_iterations = 2
+        # self._grpo_iter = 0
+        self._ppo_clip_r = 0.2
+        # train_dataset = repeat_interleave(train_dataset)
+
 
         # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
         # input tensor associated with the key "input_ids". However, in GRPO, the sampled data does not include the
@@ -360,6 +379,9 @@ class GRPOTrainer(Trainer):
 
         if args.sync_ref_model:
             self.add_callback(SyncRefModelCallback(ref_model=self.ref_model, accelerator=self.accelerator))
+
+        self.add_callback(SyncOldPolicyCallback(old_policy=self.old_policy, 
+                                                accelerator=self.accelerator))
 
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
@@ -477,7 +499,10 @@ class GRPOTrainer(Trainer):
                     ref_per_token_logps = self._get_per_token_logps(
                         self.model, prompt_completion_ids, attention_mask, logits_to_keep
                     )
-
+            
+            old_per_token_logps = self._get_per_token_logps(
+                    self.old_policy, prompt_completion_ids, attention_mask, logits_to_keep
+                )
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
         if is_conversational(inputs[0]):
@@ -543,6 +568,7 @@ class GRPOTrainer(Trainer):
             "completion_mask": completion_mask,
             "ref_per_token_logps": ref_per_token_logps,
             "advantages": advantages,
+            "old_per_token_logps":old_per_token_logps,
         }
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -555,21 +581,33 @@ class GRPOTrainer(Trainer):
         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
-
+        old_per_token_logps = inputs["old_per_token_logps"]
         per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, logits_to_keep)
-
+        log_ratio = per_token_logps - old_per_token_logps
+        # print(f'log ratio:{log_ratio}')
+        # print(f'per token logps:{per_token_logps}')
+        # print(f'old per token logps:{old_per_token_logps}')
         # Compute the KL divergence between the model and the reference model
         ref_per_token_logps = inputs["ref_per_token_logps"]
         per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
 
         # x - x.detach() allows for preserving gradients from x
         advantages = inputs["advantages"]
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        # print(f'shapes: advantage:{advantages.shape}, \n log_ratio:{log_ratio.shape}')
+        # print(f'shapes: per_token_logps:{per_token_logps.shape}, \n old_per_token_logps:{old_per_token_logps.shape}')
+        per_token_loss = torch.minimum(torch.exp(log_ratio)*advantages.unsqueeze(1), 
+                             torch.clip(torch.exp(log_ratio), 
+                                        1-self._ppo_clip_r, 
+                                        1+self._ppo_clip_r)*advantages.unsqueeze(1)
+                                        )
+        # per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
         # print(f'per_token_loss: {per_token_loss}')
+        print(f'per_token_loss shape: {per_token_loss.shape}')
+        per_token_loss = -(per_token_loss - self.beta * per_token_kl) 
+        # per_token_loss = - per_token_loss # if there is no kl_loss, model should not train
         # print(f'per_token_kl: {per_token_kl}')
         loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-
+        print(f'total loss: {loss}')
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
