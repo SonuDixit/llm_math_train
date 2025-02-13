@@ -260,13 +260,8 @@ class GRPOTrainer(Trainer):
         self.use_vllm = args.use_vllm
 
         self.beta = args.beta
-
-        #### - edits for grpo internal update
-        # self.num_grpo_iterations = 2
-        # self._grpo_iter = 0
-        self._ppo_clip_r = 0.2
-        # train_dataset = repeat_interleave(train_dataset)
-
+        self._ppo_clip_r = 0.2  # ppo_clipping 1+eps, 1-eps
+        
 
         # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
         # input tensor associated with the key "input_ids". However, in GRPO, the sampled data does not include the

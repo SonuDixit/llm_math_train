@@ -55,3 +55,30 @@ trainer = GRPOTrainer(
     eval_dataset=test_ds,
 )
 trainer.train()
+
+'''
+for multiple iterations of grpo training
+ref - https://github.com/huggingface/trl/issues/2608#issuecomment-2609844003
+
+def __init__(self, ...):
+    ...
+    self.train_dataset = repeat_interleave(train_dataset, self.num_grpo_iterations)  # [prompt0, prompt1] -> [prompt0, prompt0, prompt0, prompt1, prompt1, prompt1]
+    # dont know why this is required
+    # this is done, so that we dont need to store old_model
+    # since the same data point is being repeated, the same old_log_ps is still valid
+    # but this is not the right approach
+
+def compute_loss(self, model, inputs):
+    if self.step % self.num_grpo_iterations == 0: # self.num_grpo_iterations is 𝜇 in the paper
+        completions = model.generate(prompts)
+        self.old_log_probs = model(cat(prompts, completions))
+        # detach here - since we dont update old_policy
+        # note - We need to keep another copy of model, if the dataset was repeat_interleaved
+        # but this is not the right approach, correctness is dependent on multiple things
+
+    log_probs = model(cat(prompts, completions))
+    log_ratio = log_probs - self.old_log_probs
+    losses = min(exp(log_ratio)*advantages, clip(exp(log_ratio), 1-epsilon, 1+epsilon)*advantages)
+    losses = losses - beta*kl
+
+'''
