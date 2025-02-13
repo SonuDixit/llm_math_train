@@ -63,15 +63,6 @@ if is_wandb_available():
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
 
-def weight_copy(curr_policy, old_policy):
-    '''
-    set old_policy params to curr_policy
-    '''
-    for param1, param2 in zip(curr_policy.parameters(), old_policy.parameters()):
-        param2.data = param1.data
-
-
-
 class GRPOTrainer(Trainer):
     """
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
