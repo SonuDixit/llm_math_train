@@ -90,8 +90,21 @@ def apply_chat_template(
 
     # Apply the chat template to the prompt, adding the generation prompt
     if "prompt" in example:
+        last_role = example["prompt"][-1]["role"]
+        if last_role == "user":
+            add_generation_prompt = True
+            continue_final_message = False
+        elif last_role == "assistant":
+            add_generation_prompt = False
+            continue_final_message = True
+        else:
+            raise ValueError(f"Invalid role in the last message: {last_role}")
         prompt = tokenizer.apply_chat_template(
-            example["prompt"], tools=tools, tokenize=False, add_generation_prompt=True
+            example["prompt"],
+            tools=tools,
+            continue_final_message=continue_final_message,
+            tokenize=False,
+            add_generation_prompt=add_generation_prompt,
         )
 
     # Apply the chat template to the entire prompt + completion
@@ -180,9 +193,12 @@ def maybe_apply_chat_template(
     Returns:
         `dict[str, str]`: The formatted example with the chat template applied.
 
-    Note:
-        This function does not alter the keys, except for Language modeling dataset, where `"messages"` is replaced by
+    Notes:
+        - This function does not alter the keys, except for Language modeling dataset, where `"messages"` is replaced by
         `"text"`.
+
+        - In case of prompt-only data, if the last role is `"user"`, the generation prompt is added to the prompt. Else,
+        if the last role is `"assistant"`, the final message is continued.
 
     Example:
 
@@ -412,3 +428,37 @@ def maybe_extract_prompt(example: dict[str, list]) -> dict[str, list]:
         if (chosen_conv and prompt_conv) or (not chosen_conv and not prompt_conv):
             return example
     return extract_prompt({"chosen": example["chosen"], "rejected": example["rejected"]})
+
+
+def pack_examples(examples: dict[str, list[list]], seq_length: int) -> dict[str, list[list]]:
+    """
+    Pack examples into chunks of size `seq_length`.
+
+    Args:
+        examples (`dict[str, list[list]]`):
+            Dictionary of examples with keys as strings and values as lists of lists.
+        seq_length (`int`):
+            Maximum sequence length.
+
+    Returns:
+        `dict[str, list[list]]`: Dictionary of examples with keys as strings and values as lists of lists.
+
+    Example:
+
+    ```python
+    >>> from trl import pack_examples
+    >>> examples = {
+    ...     "input_ids": [[1, 2, 3], [4, 5, 6, 7], [8]],
+    ...     "attention_mask": [[0, 1, 1], [0, 0, 1, 1], [1]],
+    ... }
+    >>> pack_examples(examples, seq_length=5)
+    {'input_ids': [[1, 2, 3, 4, 5], [6, 7, 8]], 'attention_mask': [[0, 1, 1, 0, 0], [1, 1, 1]]}
+    >>> pack_examples(examples, seq_length=2)
+    {'input_ids': [[1, 2], [3, 4], [5, 6], [7, 8]], 'attention_mask': [[0, 1], [1, 0], [0, 1], [1, 1]]}
+    ```
+    """
+    # Join  all the values into a single list
+    examples = {k: sum(v, []) for k, v in examples.items()}
+    # Split the values into chunks of size seq_length
+    examples = {k: [v[i : i + seq_length] for i in range(0, len(v), seq_length)] for k, v in examples.items()}
+    return examples
