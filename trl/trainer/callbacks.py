@@ -93,49 +93,6 @@ def _generate_completions(
     return completions
 
 
-class SyncOldPolicyCallback(TrainerCallback):
-    """
-    Callback to synchronize the old_policy with the current policy model.
-    """
-    def __init__(
-        self,
-        old_policy: Union[PreTrainedModel, torch.nn.Module],
-        accelerator: Optional[Accelerator],
-    ):
-        self.accelerator = accelerator
-        self.old_policy = old_policy
-
-    @staticmethod
-    def _sync_target_model(model, target_model, alpha=1.0):
-        '''
-        alpha=1.0 -> to copy the weight => target_model.weights = model.weights
-        target_model_weight = (1-alpha)*target_model + alpha*model 
-        '''
-        print('##### updating the old policy weights ########')
-        for target_param, copy_param in zip(target_model.parameters(), model.parameters()):
-            target_param.data.mul_(1.0 - alpha).add_(copy_param.data, alpha=alpha)
-
-    @staticmethod
-    def sync_target_model(model, target_model, alpha):
-        deepspeed_plugin = AcceleratorState().deepspeed_plugin
-        if deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3:
-            with deepspeed.zero.GatheredParameters(
-                list(model.parameters()) + list(target_model.parameters()), modifier_rank=0
-            ):
-                if deepspeed.comm.get_rank() == 0:
-                    SyncOldPolicyCallback._sync_target_model(model, target_model, alpha)
-        else:
-            SyncOldPolicyCallback._sync_target_model(model, target_model, alpha)
-
-    def on_step_end(self, args, state, control, **kwargs):
-        model: PreTrainedModel = kwargs["model"]
-
-        if self.old_policy is not None and state.global_step % args.num_exploration_steps == 0:
-            if self.accelerator:
-                model = self.accelerator.unwrap_model(model)
-            self.sync_target_model(model, self.old_policy, 1.0)
-
-
 class SyncRefModelCallback(TrainerCallback):
     """
     Callback to synchronize the model with a reference model.
@@ -173,6 +130,27 @@ class SyncRefModelCallback(TrainerCallback):
             if self.accelerator:
                 model = self.accelerator.unwrap_model(model)
             self.sync_target_model(model, self.ref_model, args.ref_model_mixup_alpha)
+
+
+class SyncPolicyModelCallback(SyncRefModelCallback):
+    """
+    Callback to synchronize the model with a reference model.
+    """
+
+    def __init__(
+        self,
+        old_policy: Union[PreTrainedModel, torch.nn.Module],
+        accelerator: Optional[Accelerator],
+    ):
+        super().__init__(ref_model=old_policy, accelerator=accelerator)
+
+    def on_step_end(self, args, state, control, **kwargs):
+        model: PreTrainedModel = kwargs["model"]
+
+        if state.global_step % args.num_exploration_steps == 0:
+            if self.accelerator:
+                model = self.accelerator.unwrap_model(model)
+            self.sync_target_model(model, self.ref_model, alpha=1.0)
 
 
 class RichProgressCallback(TrainerCallback):

@@ -45,7 +45,8 @@ class GRPOConfig(TrainingArguments):
         max_prompt_length (`int` or `None`, *optional*, defaults to `512`):
             Maximum length of the prompt. If the prompt is longer than this value, it will be truncated left.
         num_generations (`int` or `None`, *optional*, defaults to `8`):
-            Number of generations per prompt to sample.
+            Number of generations per prompt to sample. The global batch size (num_processes * per_device_batch_size)
+            must be divisible by this value.
         temperature (`float`, *optional*, defaults to `0.9`):
             Temperature for sampling. The higher the temperature, the more random the completions.
         max_completion_length (`int` or `None`, *optional*, defaults to `256`):
@@ -64,7 +65,8 @@ class GRPOConfig(TrainingArguments):
         vllm_device (`str`, *optional*, defaults to `"auto"`):
             Device where vLLM generation will run, e.g. `"cuda:1"`. If set to `"auto"` (default), the system will
             automatically select the next available GPU after the last one used for training. This assumes that
-            training has not already occupied all available GPUs.
+            training has not already occupied all available GPUs. If only one device is available, the device will be
+            shared between both training and vLLM.
         vllm_gpu_memory_utilization (`float`, *optional*, defaults to `0.9`):
             Ratio (between 0 and 1) of GPU memory to reserve for the model weights, activations, and KV cache on the
             device dedicated to generation powered by vLLM. Higher values will increase the KV cache size and thus
@@ -73,19 +75,21 @@ class GRPOConfig(TrainingArguments):
         vllm_dtype (`str`, *optional*, defaults to `"auto"`):
             Data type to use for vLLM generation. If set to `"auto"`, the data type will be automatically determined
             based on the model configuration. Find the supported values in the vLLM documentation.
+        vllm_max_model_len (`int` or `None`, *optional*, defaults to `None`):
+            If set, the `max_model_len` to use for vLLM. This could be useful when running with reduced
+            `vllm_gpu_memory_utilization`, leading to a reduced KV cache size. If not set, vLLM will use the model
+            context size, which might be much larger than the KV cache, leading to inefficiencies.
 
         > Parameters that control the training
 
         learning_rate (`float`, *optional*, defaults to `1e-6`):
             Initial learning rate for [`AdamW`] optimizer. The default value replaces that of
             [`~transformers.TrainingArguments`].
-        per_device_train_batch_size (`int`, *optional*, defaults to `1`):
-            Number of prompts sampled per device for training. The actual batch passed into the model will be this
-            value multiplied by `num_generations`.
-        gradient_accumulation_steps (`int`, *optional*, defaults to `8`):
-            Number of updates steps to accumulate the gradients for, before performing a backward/update pass.
         beta (`float`, *optional*, defaults to `0.04`):
             KL coefficient.
+        reward_weights (`list[float]` or `None`, *optional*, defaults to `None`):
+            Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are
+            weighted equally with weight `1.0`.
         sync_ref_model (`bool`, *optional*, defaults to `False`):
             Whether to synchronize the reference model with the active model every `ref_model_sync_steps` steps, using
             the `ref_model_mixup_alpha` parameter. This synchronization originites from the
@@ -99,6 +103,17 @@ class GRPOConfig(TrainingArguments):
             τ parameter from the [TR-DPO](https://huggingface.co/papers/2404.09656) paper, which determines how
             frequently the current policy is synchronized with the reference policy. To use this parameter, you must
             set `sync_ref_model=True`.
+        num_exploration_steps (`int`, *optional*, defaults to `1`):
+            num of exploration steps in from the old policy, mu parameter in Deepseek-Math-Algorithm1
+             old_policy weights are updated with the current policy after num_exploration_steps .
+        clip_range (`float`, *optional*, defaults to `0.2`):
+            clipping parameter from the ppo paper. the ratio of current and previous policy
+            prob is clipped in (1-clip_range,1+clip_range)
+
+        > Parameters that control the logging
+
+        log_completions (`bool`, *optional*, defaults to `False`):
+            Whether to log the completions during training.
     """
 
     # Parameters that control the model and reference model
@@ -128,7 +143,10 @@ class GRPOConfig(TrainingArguments):
     )
     num_generations: Optional[int] = field(
         default=8,
-        metadata={"help": "Number of generations to sample."},
+        metadata={
+            "help": "Number of generations to sample. The global batch size (num_processes * per_device_batch_size) "
+            "must be divisible by this value."
+        },
     )
     temperature: Optional[float] = field(
         default=0.9,
@@ -181,6 +199,14 @@ class GRPOConfig(TrainingArguments):
             "determined based on the model configuration. Find the supported values in the vLLM documentation."
         },
     )
+    vllm_max_model_len: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "If set, the `max_model_len` to use for vLLM. This could be useful when running with reduced "
+            "`vllm_gpu_memory_utilization`, leading to a reduced KV cache size. If not set, vLLM will use the model "
+            "context size, which might be much larger than the KV cache, leading to inefficiencies."
+        },
+    )
 
     # Parameters that control the training
     learning_rate: float = field(
@@ -190,26 +216,16 @@ class GRPOConfig(TrainingArguments):
             "`transformers.TrainingArguments`."
         },
     )
-    # GRPO generates multiple completions per prompt, increasing memory usage.
-    # To accommodate this, the per-device train batch size is decreased (overriden from the parent class),
-    # and the number gradient accumulation steps is increased to maintain the effective batch size.
-    per_device_train_batch_size: int = field(
-        default=1,
-        metadata={
-            "help": "Number of prompts sampled per device for training. The actual batch passed into the model will "
-            "be this value multiplied by `num_generations`."
-        },
-    )
-    gradient_accumulation_steps: int = field(
-        default=8,
-        metadata={
-            "help": "Number of updates steps to accumulate the gradients for, before performing a backward/update "
-            "pass."
-        },
-    )
     beta: float = field(
         default=0.04,
         metadata={"help": "KL coefficient."},
+    )
+    reward_weights: Optional[list[float]] = field(
+        default=None,
+        metadata={
+            "help": "Weights for each reward function. Must match the number of reward functions. If `None`, all "
+            "rewards are weighted equally with weight `1.0`."
+        },
     )
     sync_ref_model: bool = field(
         default=False,
@@ -236,7 +252,19 @@ class GRPOConfig(TrainingArguments):
     num_exploration_steps: int = field(
         default=1,
         metadata={
-            "help": "number of exploration steps done before syncing old and new policy."
-            "old policy gets updated after these training steps. "
+            "help": "num of exploration steps in from the old policy, mu parameter in Deepseek-Math-Algorithm1 "
+            "old_policy weights are updated with the current policy after num_exploration_steps"
         },
+    )
+    clip_range: float = field(
+        default=0.2,
+        metadata={
+            "help": " clipping parameter from the ppo paper. the ratio of current and previous policy "
+            "prob is clipped in (1-clip_range,1+clip_range)"
+        },
+    )
+    # Parameters that control the logging
+    log_completions: bool = field(
+        default=False,
+        metadata={"help": "Whether to log the completions during training."},
     )
