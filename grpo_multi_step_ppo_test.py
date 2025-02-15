@@ -52,10 +52,10 @@ train_ds, test_ds = get_dataset(train_size=train_size,
 print(f'datasets training:{train_ds}, validation:{test_ds}')
 training_args = GRPOConfig(output_dir="qwen_multi_step-GRPO", 
                            logging_steps=1,
-                           per_device_train_batch_size=1,
+                           per_device_train_batch_size=2,
                            gradient_accumulation_steps=1,
-                           num_generations=6,               # G in GRPO paper
-                           learning_rate=1e-2,
+                           num_generations=2,               # G in GRPO paper
+                           learning_rate=1e-1,
                            max_completion_length=32,        # |o_i| in GRPO paper
                            run_name=f'{exp_id}_{exp_name}',                 # wandb logging
                            use_cpu=True,
