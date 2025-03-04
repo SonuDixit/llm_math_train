@@ -101,6 +101,37 @@ def get_dataset(train_size: int = 327680, test_size: int = 1024) -> Tuple[Datase
     test_dataset = test_dataset.map(function=make_map_fn('test'), with_indices=True)
     return train_dataset, test_dataset
 
+def get_gsm8k_dataset(split: str = 'train') -> Dataset:
+    
+    def format_user_question(user_question: str) -> str:
+        prefix = f"""A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
+        User: {user_question} Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>. 
+        Assistant: Let me solve this step by step.<think>"""
+        return prefix
+    def extract_hash_answer(text: str | None) -> str | None:
+        if "####" not in text:
+            return None
+        return text.split("####")[1].strip().replace(",", "").replace("$", "")
+    
+    
+    ds = load_dataset("openai/gsm8k", "main", split=split)
+    print(ds)
+    ds = ds.map(lambda x: {
+        "question": x["question"],
+        "answer": x["answer"],
+        "extracted_answer": extract_hash_answer(x["answer"]),
+        "prompt": [{
+                    "role": "user",
+                    "content": format_user_question(x["question"]),
+                }]
+         }
+        )
+    return ds
+
+
+
+
+
 if __name__ == "__main__":
     
     pass
