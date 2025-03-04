@@ -111,9 +111,12 @@ def get_gsm8k_dataset(split: str = 'train') -> Dataset:
         # User: {user_question} Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>. 
         # Assistant: Let me solve this step by step.<think>"""
         
-        prefix = """You are an helpful Assistant with excellent reasoning ability. When the user asks the question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
+        prefix = """You are an helpful Assistant with excellent reasoning ability. 
+                    When the user asks the question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
                     <think> {your step by step reasoning process here} </think>
-                    <answer> {answer here} </answer>
+                    <solution> {your solution steps, calculations goes here} </solution>
+                    <answer> {final answer here} </answer>
+                    remember the final answer is supposed to contain digits only, dont mention any text.
                     """
         prefix = prefix + user_question
         return prefix
