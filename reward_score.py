@@ -117,5 +117,63 @@ def compute_score(solution_str,
             print(f"Error evaluating equation")
         return format_score 
 
+def compute_score_gsm8k(solution_str, 
+                  ground_truth, 
+                #   method='strict', 
+                  format_score=0.1, 
+                  score=1.):
+    """The scoring function for.
+    
+    Args:
+        solution_str: the solution text
+        ground_truth: ground_truth answer
+        method: the method to extract the solution
+        format_score: the score for correct format but wrong answer
+        score: the score for the correct answer
+    """
+    target = ground_truth
+    
+    equation = extract_solution(solution_str=solution_str)
+    do_print = random.randint(1, 64) == 1
+    # do_print = True
+    
+    if do_print:
+        print(f"--------------------------------")
+        print(f"Extracted equation: {equation}")
+        print(f"Solution string: {solution_str}")
+
+    if equation is None:
+        if do_print:
+            print(f"No equation found")
+        return 0
+    
+    # Validate equation uses correct numbers
+    # if not validate_equation(equation, numbers):
+    #     if do_print:
+    #         print(f"Invalid equation")
+    #     return format_score
+        
+    # Evaluate equation
+    try:
+        result = evaluate_equation(equation)
+        if result is None:
+            if do_print:
+                print(f"Could not evaluate equation")
+            return format_score
+            
+        if abs(result - target) < 1e-5:  # Account for floating point precision
+            if do_print:
+                print(f"Correct equation: {equation} = {result}")
+            return score
+        else:
+            if do_print:
+                print(f"Wrong result: equation = {result}, target = {target}")
+            return format_score
+    except:
+        if do_print:
+            print(f"Error evaluating equation")
+        return format_score 
+
+
 if __name__ == '__main__':
     pass
