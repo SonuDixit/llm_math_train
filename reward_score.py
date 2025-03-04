@@ -139,6 +139,7 @@ def compute_score_gsm8k(solution_str,
     
     if do_print:
         print(f"--------------------------------")
+        print(f"answer:{target}")
         print(f"Extracted equation: {equation}")
         print(f"Solution string: {solution_str}")
 
