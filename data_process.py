@@ -102,11 +102,20 @@ def get_dataset(train_size: int = 327680, test_size: int = 1024) -> Tuple[Datase
     return train_dataset, test_dataset
 
 def get_gsm8k_dataset(split: str = 'train') -> Dataset:
-    
+    sys_prompt = """You are an helpful Assistant with excellent reasoning ability. When the user asks the question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
+                    <think> {your step by step reasoning process here} </think>
+                    <answer> {answer here} </answer>
+                    """
     def format_user_question(user_question: str) -> str:
-        prefix = f"""A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
-        User: {user_question} Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>. 
-        Assistant: Let me solve this step by step.<think>"""
+        # prefix = f"""A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
+        # User: {user_question} Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>. 
+        # Assistant: Let me solve this step by step.<think>"""
+        
+        prefix = """You are an helpful Assistant with excellent reasoning ability. When the user asks the question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
+                    <think> {your step by step reasoning process here} </think>
+                    <answer> {answer here} </answer>
+                    """
+        prefix = prefix + user_question
         return prefix
     def extract_hash_answer(text: str | None) -> str | None:
         if "####" not in text:
@@ -120,10 +129,12 @@ def get_gsm8k_dataset(split: str = 'train') -> Dataset:
         "question": x["question"],
         "answer": x["answer"],
         "extracted_answer": extract_hash_answer(x["answer"]),
-        "prompt": [{
-                    "role": "user",
-                    "content": format_user_question(x["question"]),
-                }]
+        "prompt": [{"role":"system",
+                    "content":sys_prompt,
+                    },
+                    {"role": "user",
+                    "content": x["question"],
+                    }]
          }
         )
     return ds
