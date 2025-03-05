@@ -6,24 +6,41 @@ import operator
 
 
 def extract_solution(solution_str):
-    """Extract the equation from the solution string."""
-    # Remove everything before the first "Assistant:"
+    """
+    Extract the equation from the solution string by locating the content inside <answer>...</answer> tags.
+    """
+    # Remove everything before the first "Assistant:" or "<|im_start|>assistant"
     if "Assistant:" in solution_str:
         solution_str = solution_str.split("Assistant:", 1)[1]
     elif "<|im_start|>assistant" in solution_str:
         solution_str = solution_str.split("<|im_start|>assistant", 1)[1]
-    else:
-        return None
-    solution_str = solution_str.split('\n')[-1]
-
+    
+    # Extract the content within <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
-    match = re.finditer(answer_pattern, solution_str)
-    matches = list(match)
-    if matches:
-        final_answer = matches[-1].group(1).strip()
-    else:
-        final_answer = None
-    return final_answer
+    matches = re.findall(answer_pattern, solution_str, re.DOTALL)
+    
+    # Return the last occurrence of <answer>...</answer>, if present
+    return matches[-1].strip() if matches else None
+# def extract_solution(solution_str):
+#     """Extract the equation from the solution string."""
+#     # Remove everything before the first "Assistant:"
+#     if "Assistant:" in solution_str:
+#         solution_str = solution_str.split("Assistant:", 1)[1]
+#     elif "<|im_start|>assistant" in solution_str:
+#         solution_str = solution_str.split("<|im_start|>assistant", 1)[1]
+#     # else:
+#         # return None
+#     print(solution_str.split('\n'))
+#     solution_str = solution_str.split('\n')[-1]
+#     print(solution_str)
+#     answer_pattern = r'<answer>(.*?)</answer>'
+#     match = re.finditer(answer_pattern, solution_str)
+#     matches = list(match)
+#     if matches:
+#         final_answer = matches[-1].group(1).strip()
+#     else:
+#         final_answer = None
+#     return final_answer
 
 
 def validate_equation(equation_str, 
@@ -53,6 +70,7 @@ def evaluate_equation(equation_str):
 
         # Evaluate the equation with restricted globals and locals
         result = eval(equation_str, {"__builtins__": None}, {})
+        print('result eval equation :',result)
         return result
     except Exception as e:
         return None
@@ -99,6 +117,7 @@ def compute_score(solution_str,
     # Evaluate equation
     try:
         result = evaluate_equation(equation)
+        print('result returned :',result)
         if result is None:
             if do_print:
                 print(f"Could not evaluate equation")
@@ -112,9 +131,10 @@ def compute_score(solution_str,
             if do_print:
                 print(f"Wrong result: equation = {result}, target = {target}")
             return format_score
-    except:
+    except Exception as e:
         if do_print:
             print(f"Error evaluating equation")
+            print(e)
         return format_score 
 
 def compute_score_gsm8k(solution_str, 
@@ -137,8 +157,8 @@ def compute_score_gsm8k(solution_str,
     
     equation = extract_solution(solution_str=solution_str)
     do_print = random.randint(1, 64) == 1
-    # do_print = True
-    
+    do_print = True
+    print(f'equation:{equation}')
     if do_print:
         print(f"--------------------------------")
         print(f"User query: {user_query}")
