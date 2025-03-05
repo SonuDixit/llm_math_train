@@ -118,7 +118,8 @@ def compute_score(solution_str,
         return format_score 
 
 def compute_score_gsm8k(solution_str, 
-                  ground_truth, 
+                  ground_truth,
+                  user_query, 
                 #   method='strict', 
                   format_score=0.1, 
                   score=1.):
@@ -127,6 +128,7 @@ def compute_score_gsm8k(solution_str,
     Args:
         solution_str: the solution text
         ground_truth: ground_truth answer
+        user_query: user query
         method: the method to extract the solution
         format_score: the score for correct format but wrong answer
         score: the score for the correct answer
@@ -139,6 +141,7 @@ def compute_score_gsm8k(solution_str,
     
     if do_print:
         print(f"--------------------------------")
+        print(f"User query: {user_query}")
         print(f"answer:{target}")
         print(f"Extracted equation: {equation}")
         print(f"Solution string: {solution_str}")
