@@ -12,10 +12,10 @@ def accuracy_reward_func(prompts, completions, **kwargs):
     solutions = [completion[0]["content"] for completion in completions]
     ground_truths = kwargs.get("extracted_answer")
     # print(ground_truths)
-    print('accuracy reward')
-    print(f'prompt:{prompts}')
-    print(f'answers:{ground_truths}')
-    print(f'generated_response:{solutions}')
+    # print('accuracy reward')
+    # print(f'prompt:{prompts}')
+    # print(f'answers:{ground_truths}')
+    # print(f'generated_response:{solutions}')
 
     scores = [compute_score_gsm8k(solution_str=solution, 
                             ground_truth=ground_truth,
@@ -37,7 +37,7 @@ def format_reward_func(completions, **kwargs):
     ans_pattern = r"<answer>.*?</answer>"
     sol_pattern = r"<solution>.*?</solution>"
     
-    completion_contents = [completion["content"] for completion in completions]
+    completion_contents = [completion[0]["content"] for completion in completions]
     
     scores = []
     for content in completion_contents:
@@ -52,32 +52,32 @@ def format_reward_func(completions, **kwargs):
     
     return scores
 
-exp_id:int = 10
-exp_name:str = 'test_grpo_bp_sgd'
-model_name:str = "Qwen/Qwen2-0.5B"
+exp_id:int = 14
+exp_name:str = 'gsm_grpo_multi_step'
+model_name:str = "Qwen/Qwen2-0.5B-Instruct"
 # model_name:str = "openai-community/gpt2-medium"
-train_size:int = 16
-test_size:int = 2
+# train_size:int = 16
+# test_size:int = 2
 num_exploration_steps:int = 4
 
 train_ds = get_gsm8k_dataset(split='train')
 test_ds = get_gsm8k_dataset(split='test')
 print(f'datasets training:{train_ds}, validation:{test_ds}')
 
-training_args = GRPOConfig(output_dir="qwen_multi_step-GRPO", 
+training_args = GRPOConfig(output_dir="gsm_multi_step-GRPO", 
                            logging_steps=1,
-                           per_device_train_batch_size=2,
-                           gradient_accumulation_steps=1,
-                           num_generations=2,               # G in GRPO paper
-                           learning_rate=1e-1,
-                           max_completion_length=32,        # |o_i| in GRPO paper
+                           per_device_train_batch_size=8,
+                           gradient_accumulation_steps=64,
+                           num_generations=8,               # G in GRPO paper
+                           learning_rate=1e-5,
+                           max_completion_length=1024,        # |o_i| in GRPO paper
                            run_name=f'{exp_id}_{exp_name}',                 # wandb logging
-                           use_cpu=True,
+                           use_cpu=False,
                            num_train_epochs=1,
-                           optim='sgd',
-                           report_to="none",
+                        #    optim='sgd',
+                        #    report_to="none",
                            num_exploration_steps = num_exploration_steps,
-                        #    clip_range=0.2
+                           clip_range=0.2
                            )
 trainer = GRPOTrainer(
     model=model_name,
@@ -86,13 +86,13 @@ trainer = GRPOTrainer(
     train_dataset=train_ds,
     eval_dataset=test_ds,
 )
-previous_trainable_params = {n: param.clone() for n, param in trainer.model.named_parameters()}
+# previous_trainable_params = {n: param.clone() for n, param in trainer.model.named_parameters()}
 
 trainer.train()
 
 # Check that the params have changed
-for n, param in previous_trainable_params.items():
-    new_param = trainer.model.get_parameter(n)
-    if torch.equal(param, new_param):
-        print(f"Parameter {n} has not changed.")
+# for n, param in previous_trainable_params.items():
+#     new_param = trainer.model.get_parameter(n)
+#     if torch.equal(param, new_param):
+#         print(f"Parameter {n} has not changed.")
 
