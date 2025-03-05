@@ -18,17 +18,39 @@ def accuracy_reward_func(prompts, completions, **kwargs):
     print(f'generated_response:{solutions}')
 
     scores = [compute_score_gsm8k(solution_str=solution, 
-                            ground_truth=ground_truth) for solution, ground_truth in zip(solutions, ground_truths)]
+                            ground_truth=ground_truth,
+                            user_query=prompt) for prompt, solution, ground_truth in zip(prompts, solutions, ground_truths)]
     return scores
 
 def format_reward_func(completions, **kwargs):
-    """Reward function that checks if the completion has a specific format."""
-    pattern = r"^<think>.*?</think>.*?<answer>.*?</answer>$"  # allow text after think
-    completion_contents = [completion[0]["content"] for completion in completions]
-    # print('format reward')
-    # print(completion_contents)
-    matches = [re.match(pattern, content) for content in completion_contents]
-    return [1.0 if match else 0.0 for match in matches]
+    """
+    Reward function that checks if the completion has a specific format.
+    Should start with <think> and end with <answer> tags.
+    Scoring criteria:
+    - 1 if <think></think> is present
+    - 1 if <answer></answer> is present
+    - 1 if <solution></solution> is present
+    - 1 if all the above are present
+    The final score is the mean of the above 4 values.
+    """
+    think_pattern = r"<think>.*?</think>"
+    ans_pattern = r"<answer>.*?</answer>"
+    sol_pattern = r"<solution>.*?</solution>"
+    
+    completion_contents = [completion["content"] for completion in completions]
+    
+    scores = []
+    for content in completion_contents:
+        has_think = bool(re.search(think_pattern, content))
+        has_answer = bool(re.search(ans_pattern, content))
+        has_solution = bool(re.search(sol_pattern, content))
+        all_present = has_think and has_answer and has_solution
+        
+        # Compute the mean score
+        score = sum([has_think, has_answer, has_solution, all_present]) / 4.0
+        scores.append(score)
+    
+    return scores
 
 exp_id:int = 10
 exp_name:str = 'test_grpo_bp_sgd'
