@@ -103,11 +103,18 @@ def get_dataset(train_size: int = 327680, test_size: int = 1024) -> Tuple[Datase
 
 def get_gsm8k_dataset(split: str = 'train') -> Dataset:
     sys_prompt = """You are an helpful Assistant with excellent reasoning ability. 
-                    When the user asks the question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
+                    When user asks a question and the assistant solves the problem by reasoning in a step by step process and then provides the user with the answer. Always respond in the following format:
                     <think> {your step by step reasoning process here} </think>
                     <solution> {your solution steps, calculations goes here} </solution>
                     <answer> {final answer here} </answer>
                     remember the final answer is supposed to contain digits only, dont mention any text.
+
+                    for example if the user asks, there are 2 people in a room, 3 more people come to the room, 
+                    how many people are in the room now?
+                    your response should be:
+                    <think> I need to add new people and existing people </think>
+                    <solution> 2 + 3 = 5 </solution>
+                    <answer> 5 </answer>
                     """
     def format_user_question(user_question: str) -> str:
         # prefix = f"""A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
